@@ -11,13 +11,11 @@ local kritickaHodnotaOdpadu = 0.95
 local intervalObnovy = 2
 
 -- Stav
-local alarmAktivny = false
 local scramManualne = false
 
 -- Periferie
 local reaktor = peripheral.find("fissionReactorLogicAdapter")
 local monitor = peripheral.find("monitor")
-local reproduktor = peripheral.find("speaker")
 local chatBox = peripheral.find("chatBox")
 
 -- Ziskaj turbiny (max 6)
@@ -69,17 +67,6 @@ local function vykresliTlacidlo(x, y, text, aktivne)
   monitor.setBackgroundColor(colors.black)
 end
 
-local function prehratAlarm()
-  if reproduktor and not alarmAktivny then
-    reproduktor.playSound("minecraft:block.note_block.bass", 1, 0.5)
-    alarmAktivny = true
-  end
-end
-
-local function zastavitAlarm()
-  alarmAktivny = false
-end
-
 local function posliChatSpravu(sprava)
   if chatBox then
     chatBox.sendMessage("[" .. nazovReaktora .. "]: " .. sprava, "@a")
@@ -100,21 +87,9 @@ local function ziskajDataReaktora()
   }
 end
 
-local function vykresliProgressBar(y, popis, hodnota, farba)
-  local w, _ = monitor.getSize()
-  local sirka = math.floor(w * 0.8)
-  local x = math.floor((w - sirka) / 2) + 1
-  local plne = math.floor(hodnota * sirka)
-  monitor.setCursorPos(x, y)
-  monitor.setTextColor(colors.white)
-  monitor.write(popis .. ":")
-  monitor.setCursorPos(x, y + 1)
-  monitor.setBackgroundColor(colors.gray)
-  monitor.write(string.rep(" ", sirka))
-  monitor.setCursorPos(x, y + 1)
-  monitor.setBackgroundColor(farba)
-  monitor.write(string.rep(" ", plne))
-  monitor.setBackgroundColor(colors.black)
+local function vykresliPercenta(y, popis, hodnota, farba)
+  local percent = math.floor(hodnota * 100)
+  stredText(y, string.format("%s: %d%%", popis, percent), farba)
 end
 
 local function vykresliMonitor(data)
@@ -124,12 +99,12 @@ local function vykresliMonitor(data)
   stredText(4, string.format("Teplota: %.2f C", data.teplota - 273.15), colors.orange)
   stredText(5, string.format("Poskodenie: %.1f%%", data.poskodenie * 100), colors.red)
 
-  vykresliProgressBar(6, "Chladivo", data.chladivo, colors.cyan)
-  vykresliProgressBar(8, "Zahriate chladivo", data.zahriate, colors.magenta)
-  vykresliProgressBar(10, "Odpad", data.odpad, colors.yellow)
-  vykresliProgressBar(12, "Palivo", data.palivo, colors.white)
+  vykresliPercenta(6, "Chladivo", data.chladivo, colors.cyan)
+  vykresliPercenta(7, "Zahriate chladivo", data.zahriate, colors.magenta)
+  vykresliPercenta(8, "Odpad", data.odpad, colors.yellow)
+  vykresliPercenta(9, "Palivo", data.palivo, colors.white)
 
-  stredText(14, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
+  stredText(11, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
   vykresliTurbinyZjednotene()
   vykresliTlacidlo(4, 18, "ZAPNUT", data.status)
   vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
@@ -160,10 +135,8 @@ local function skontrolujBezpecnost(data)
     or not vsetkyTurbinyAktivne
   then
     scram()
-    prehratAlarm()
     posliChatSpravu("Bezpecnostny SCRAM! Kontroluj system.")
   else
-    zastavitAlarm()
     if autoZapnutie and not scramManualne and not data.status then
       reaktor.activate()
       if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
