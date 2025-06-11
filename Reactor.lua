@@ -48,19 +48,15 @@ local function stredText(y, text, farba)
   monitor.write(text)
 end
 
-local function vykresliTurbiny()
-  monitor.setCursorPos(1, 11)
-  monitor.setTextColor(colors.white)
-  monitor.write("Stav Turbin:")
-  for i, turbina in ipairs(turbiny) do
-    local aktivna = turbina.isActive()
-    local farba = aktivna and colors.lime or colors.red
-    local riadok = 11 + math.floor((i - 1) / 3) + 1
-    local stlpec = 2 + ((i - 1) % 3) * 8
-    monitor.setCursorPos(stlpec, riadok)
-    monitor.setTextColor(farba)
-    monitor.write("T" .. i .. ": " .. (aktivna and "OK" or "ZLY"))
+local function vykresliTurbinyZjednotene()
+  local aktivne = 0
+  for _, turbina in ipairs(turbiny) do
+    if turbina.isActive() then aktivne = aktivne + 1 end
   end
+  local farba = aktivne == #turbiny and colors.lime or (aktivne > 0 and colors.yellow or colors.red)
+  monitor.setCursorPos(1, 11)
+  monitor.setTextColor(farba)
+  monitor.write("Turbiny: " .. aktivne .. "/" .. #turbiny)
 end
 
 local function vykresliTlacidlo(x, y, text, aktivne)
@@ -115,12 +111,13 @@ local function vykresliMonitor(data)
   stredText(8, string.format("Odpad: %.1f%%", data.odpad * 100), colors.yellow)
   stredText(9, string.format("Palivo: %.1f%%", data.palivo * 100), colors.white)
   stredText(10, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
-  vykresliTurbiny()
+  vykresliTurbinyZjednotene()
   vykresliTlacidlo(4, 18, "ZAPNUT", data.status)
   vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
   stredText(20, "Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"), autoZapnutie and colors.lime or colors.red)
   stredText(21, "Turbiny musia byt vsetky aktivne", colors.lightBlue)
-  stredText(22, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
+  stredText(22, "Prikazy: status", colors.orange)
+  stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
 end
 
 local function scram()
@@ -173,9 +170,9 @@ local function prikazSmycka()
 
     if prikaz == "status" then
       local d = ziskajDataReaktora()
-      local vsetky = true
-      for _, t in ipairs(turbiny) do if not t.isActive() then vsetky = false break end end
-      local turbinyStatus = vsetky and "VSETKY AKTIVNE" or "NIEKTORA NEAKTIVNA"
+      local aktivne = 0
+      for _, t in ipairs(turbiny) do if t.isActive() then aktivne = aktivne + 1 end end
+      local turbinyStatus = aktivne == #turbiny and "VSETKY AKTIVNE" or (aktivne > 0 and "CASTECNE" or "ZIAIDNA AKTIVNA")
       chatBox.sendMessage(string.format("[%s] Teplota: %.2f C | Chladivo: %.1f%% | Odpad: %.1f%% | Palivo: %.1f%% | Spotreba: %.2f | Turbiny: %s",
         nazovReaktora, d.teplota - 273.15, d.chladivo * 100, d.odpad * 100, d.palivo * 100, d.rychlost, turbinyStatus), meno)
     end
