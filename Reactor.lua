@@ -100,23 +100,42 @@ local function ziskajDataReaktora()
   }
 end
 
+local function vykresliProgressBar(y, popis, hodnota, farba)
+  local w, _ = monitor.getSize()
+  local sirka = math.floor(w * 0.8)
+  local x = math.floor((w - sirka) / 2) + 1
+  local plne = math.floor(hodnota * sirka)
+  monitor.setCursorPos(x, y)
+  monitor.setTextColor(colors.white)
+  monitor.write(popis .. ":")
+  monitor.setCursorPos(x, y + 1)
+  monitor.setBackgroundColor(colors.gray)
+  monitor.write(string.rep(" ", sirka))
+  monitor.setCursorPos(x, y + 1)
+  monitor.setBackgroundColor(farba)
+  monitor.write(string.rep(" ", plne))
+  monitor.setBackgroundColor(colors.black)
+end
+
 local function vykresliMonitor(data)
   monitor.clear()
   stredText(1, "REZIM: " .. nazovReaktora, colors.green)
   stredText(3, "Status: " .. (data.status and "Online" or "Offline"), data.status and colors.lime or colors.red)
   stredText(4, string.format("Teplota: %.2f C", data.teplota - 273.15), colors.orange)
   stredText(5, string.format("Poskodenie: %.1f%%", data.poskodenie * 100), colors.red)
-  stredText(6, string.format("Chladivo: %.1f%%", data.chladivo * 100), colors.cyan)
-  stredText(7, string.format("Zahriate chladivo: %.1f%%", data.zahriate * 100), colors.magenta)
-  stredText(8, string.format("Odpad: %.1f%%", data.odpad * 100), colors.yellow)
-  stredText(9, string.format("Palivo: %.1f%%", data.palivo * 100), colors.white)
-  stredText(10, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
+
+  vykresliProgressBar(6, "Chladivo", data.chladivo, colors.cyan)
+  vykresliProgressBar(8, "Zahriate chladivo", data.zahriate, colors.magenta)
+  vykresliProgressBar(10, "Odpad", data.odpad, colors.yellow)
+  vykresliProgressBar(12, "Palivo", data.palivo, colors.white)
+
+  stredText(14, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
   vykresliTurbinyZjednotene()
   vykresliTlacidlo(4, 18, "ZAPNUT", data.status)
   vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
   stredText(20, "Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"), autoZapnutie and colors.lime or colors.red)
   stredText(21, "Turbiny musia byt vsetky aktivne", colors.lightBlue)
-  stredText(22, "Prikazy: status", colors.orange)
+  stredText(22, "Prikazy: status, on, off, scram, auto on/off, info", colors.orange)
   stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
 end
 
@@ -175,6 +194,29 @@ local function prikazSmycka()
       local turbinyStatus = aktivne == #turbiny and "VSETKY AKTIVNE" or (aktivne > 0 and "CASTECNE" or "ZIAIDNA AKTIVNA")
       chatBox.sendMessage(string.format("[%s] Teplota: %.2f C | Chladivo: %.1f%% | Odpad: %.1f%% | Palivo: %.1f%% | Spotreba: %.2f | Turbiny: %s",
         nazovReaktora, d.teplota - 273.15, d.chladivo * 100, d.odpad * 100, d.palivo * 100, d.rychlost, turbinyStatus), meno)
+    elseif prikaz == "on" then
+      scramManualne = false
+      reaktor.activate()
+      if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
+      posliChatSpravu("Reaktor zapnuty rucne.")
+    elseif prikaz == "off" then
+      scramManualne = true
+      reaktor.scram()
+      if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+      posliChatSpravu("Reaktor vypnuty rucne.")
+    elseif prikaz == "scram" then
+      scramManualne = true
+      reaktor.scram()
+      if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+      posliChatSpravu("SCRAM vykonany.")
+    elseif prikaz == "auto on" then
+      autoZapnutie = true
+      posliChatSpravu("Automaticke zapnutie je povolene.")
+    elseif prikaz == "auto off" then
+      autoZapnutie = false
+      posliChatSpravu("Automaticke zapnutie je zakazane.")
+    elseif prikaz == "info" then
+      posliChatSpravu("Prikazy: status, on, off, scram, auto on, auto off, info")
     end
   end
 end
