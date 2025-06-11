@@ -6,7 +6,7 @@
 --]]
 
 -- Konfiguracia
-local nazovReaktora = "sodik"
+local nazovReaktora = "reaktor1"
 local autoZapnutie = true
 local povolitRedstone = true
 local redstoneStrana = "back"
@@ -16,9 +16,12 @@ local kritickaHodnotaZahriatehoChladiva = 0.5
 local kritickaHodnotaChladiva = 0.2
 local kritickaHodnotaOdpadu = 0.95
 local intervalObnovy = 2
+local oneskorenieSCRAM = 10 -- cas v sekundach, po ktorom sa moze SCRAM aktivovat
 
 -- Stav SCRAM a automatika
 local scramManualne = false
+local spustenieSCRAMOneskorene = false
+local casZaciatku = os.clock()
 
 -- Najde a vrati periferiu daného typu (alebo nil ak nie je pripojená)
 local function najdiPeriferiu(typ)
@@ -35,12 +38,9 @@ local chatBox = najdiPeriferiu("chatBox")
 
 -- Zoznam manuálne definovaných turbín (max 6)
 local turbiny = {
-  peripheral.wrap("turbineValve_0"),
   peripheral.wrap("turbineValve_1"),
- --peripheral.wrap("turbineValve_2"),
- --peripheral.wrap("turbineValve_3"),
- --peripheral.wrap("turbineValve_4"),
- --peripheral.wrap("turbineValve_5"),
+  peripheral.wrap("turbineValve_2"),
+  peripheral.wrap("turbineValve_3")
 }
 
 -- Kontrola existencie periférií
@@ -147,103 +147,41 @@ local function vykresliMonitor(data)
   vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
   stredText(20, "Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"), autoZapnutie and colors.lime or colors.red)
   stredText(21, "Turbiny musia byt vsetky aktivne", colors.lightBlue)
-  stredText(22, "Prikazy: status, on/off, auto on/off, info", colors.orange)
+  stredText(22, "Prikazy: status, info, " .. nazovReaktora .. " on/off/auto", colors.orange)
   stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
 end
 
--- Bezpecnostná funkcia SCRAM: núdzovo vypne reaktor
-local function scram()
-  scramManualne = true
-  if reaktor.getStatus() then
-    reaktor.scram()
-    if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
-    posliChatSpravu("Reaktor SCRAM aktivovany.")
-  else
-    posliChatSpravu("SCRAM nebol spusteny: Reaktor uz je vypnuty.")
-  end
-end
-
--- Kontrola stavu a bezpečnostné kroky vrátane automatického zapnutia
-local function skontrolujBezpecnost(data)
-  local vsetkyTurbinyAktivne = true
-  for _, t in ipairs(turbiny) do
-    local ok, aktivna = pcall(function() return t.isActive() end)
-    if not (ok and aktivna) then
-      vsetkyTurbinyAktivne = false
-      break
-    end
-  end
-
-  if data.zahriate >= kritickaHodnotaZahriatehoChladiva
-    or data.chladivo <= kritickaHodnotaChladiva
-    or data.odpad >= kritickaHodnotaOdpadu
-    or not vsetkyTurbinyAktivne
-  then
-    scram()
-    posliChatSpravu("Bezpecnostny SCRAM! Kontroluj system.")
-  elseif autoZapnutie and not scramManualne and not data.status then
-    if not reaktor.getStatus() then
-      reaktor.activate()
-      if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
-      posliChatSpravu("Reaktor bol automaticky zapnuty.")
-    end
-  end
-end
-
--- Hlavná smyčka zobrazenia údajov na monitore
-local function monitorSmycka()
-  while true do
-    local data = ziskajDataReaktora()
-    vykresliMonitor(data)
-    skontrolujBezpecnost(data)
-    sleep(intervalObnovy)
-  end
-end
-
--- Smyčka spracovania príkazov z chatu
+-- Spracovanie príkazov cez chat
 local function prikazSmycka()
-  if not chatBox then return end
   while true do
-    local _, meno, sprava = os.pullEvent("chat")
-    local prikaz = string.lower(sprava)
+    local e, username, message = os.pullEvent("chat")
+    local msg = string.lower(message)
+    
+    -- Univerzalne prikazy bez prefixu
+    if msg == "status" then
+      local data = ziskajDataReaktora()
+      posliChatSpravu("Reaktor je " .. (data.status and "zapnuty" or "vypnuty"))
+    elseif msg == "info" then
+      local data = ziskajDataReaktora()
+      posliChatSpravu(string.format("Teplota: %.1fC, Poskodenie: %.1f%%", data.teplota - 273.15, data.poskodenie * 100))
 
-    if prikaz == "status" then
-      local d = ziskajDataReaktora()
-      local aktivne = 0
-      for _, t in ipairs(turbiny) do
-        local ok, stav = pcall(function() return t.isActive() end)
-        if ok and stav then aktivne = aktivne + 1 end
+    -- Prikazy pre konkretny reaktor
+    elseif msg == nazovReaktora .. " on" then
+      if not scramManualne then
+        reaktor.setStatus(true)
+        posliChatSpravu("Reaktor zapnuty")
+      else
+        posliChatSpravu("Nie je mozne zapnut, SCRAM aktivny")
       end
-      local turbinyStatus = aktivne == #turbiny and "VSETKY AKTIVNE" or (aktivne > 0 and "CASTECNE" or "ZIADNA AKTIVNA")
-      chatBox.sendMessage(string.format("[%s] Teplota: %.2f C | Chladivo: %.1f%% | Odpad: %.1f%% | Palivo: %.1f%% | Spotreba: %.2f | Turbiny: %s",
-        nazovReaktora, d.teplota - 273.15, d.chladivo * 100, d.odpad * 100, d.palivo * 100, d.rychlost, turbinyStatus), meno)
-    elseif prikaz == "info" then
-      posliChatSpravu("Prikazy: status, on/off, auto on/off, info")
-    else
-      local prefix = nazovReaktora .. " "
-      if prikaz:sub(1, #prefix) == prefix then
-        local cmd = prikaz:sub(#prefix + 1)
-        if cmd == "on" then
-          scramManualne = false
-          if not reaktor.getStatus() then
-            reaktor.activate()
-            if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
-          end
-          posliChatSpravu("Reaktor zapnuty rucne.")
-        elseif cmd == "off" or cmd == "scram" then
-          scram()
-          posliChatSpravu("Reaktor vypnuty rucne.")
-        elseif cmd == "auto on" then
-          autoZapnutie = true
-          posliChatSpravu("Automaticke zapnutie je povolene.")
-        elseif cmd == "auto off" then
-          autoZapnutie = false
-          posliChatSpravu("Automaticke zapnutie je zakazane.")
-        end
-      end
+    elseif msg == nazovReaktora .. " off" then
+      reaktor.setStatus(false)
+      posliChatSpravu("Reaktor vypnuty")
+    elseif msg == nazovReaktora .. " auto on" then
+      autoZapnutie = true
+      posliChatSpravu("Auto-zapnutie aktivovane")
+    elseif msg == nazovReaktora .. " auto off" then
+      autoZapnutie = false
+      posliChatSpravu("Auto-zapnutie deaktivovane")
     end
   end
 end
-
--- Spustí monitorovaciu a príkazovú smyčku súčasne
-parallel.waitForAny(monitorSmycka, prikazSmycka)
