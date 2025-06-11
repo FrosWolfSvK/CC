@@ -53,10 +53,13 @@ local function vykresliTurbiny()
   monitor.setTextColor(colors.white)
   monitor.write("Stav Turbin:")
   for i, turbina in ipairs(turbiny) do
-    monitor.setCursorPos(2 + ((i - 1) % 3) * 13, 12 + math.floor((i - 1) / 3))
     local aktivna = turbina.isActive()
-    monitor.setTextColor(aktivna and colors.lime or colors.red)
-    monitor.write("Turbina" .. i .. ": " .. (aktivna and "ZELENA" or "CERVENA"))
+    local farba = aktivna and colors.lime or colors.red
+    local riadok = 11 + math.floor((i - 1) / 3) + 1
+    local stlpec = 2 + ((i - 1) % 3) * 8
+    monitor.setCursorPos(stlpec, riadok)
+    monitor.setTextColor(farba)
+    monitor.write("T" .. i .. ": " .. (aktivna and "OK" or "ZLY"))
   end
 end
 
