@@ -1,5 +1,12 @@
+--[[
+  Multi Reactor Control Script
+  Autor: [Tvoje meno]
+  Popis: Tento skript zabezpecuje automatizovane riadenie fission reaktora,
+  kontrolu turbín, monitorovanie a ovládanie cez chat, SCRAM ochranu a vizualizáciu na monitore.
+--]]
+
 -- Konfiguracia
-local nazovReaktora = "reaktor1"
+local nazovReaktora = "sodik"
 local autoZapnutie = true
 local povolitRedstone = true
 local redstoneStrana = "back"
@@ -13,7 +20,7 @@ local intervalObnovy = 2
 -- Stav SCRAM a automatika
 local scramManualne = false
 
--- Periferie
+-- Najde a vrati periferiu daného typu (alebo nil ak nie je pripojená)
 local function najdiPeriferiu(typ)
   local ok, zariadenie = pcall(function()
     return peripheral.find(typ)
@@ -21,29 +28,32 @@ local function najdiPeriferiu(typ)
   return ok and zariadenie or nil
 end
 
+-- Inicializácia základných periférií
 local reaktor = najdiPeriferiu("fissionReactorLogicAdapter")
 local monitor = najdiPeriferiu("monitor")
 local chatBox = najdiPeriferiu("chatBox")
 
--- Manualne zadane turbiny
+-- Zoznam manuálne definovaných turbín (max 6)
 local turbiny = {
+  peripheral.wrap("turbineValve_0"),
   peripheral.wrap("turbineValve_1"),
-  peripheral.wrap("turbineValve_2"),
-  peripheral.wrap("turbineValve_3")
-  -- pridaj dalsie ak mas, max 6
+ --peripheral.wrap("turbineValve_2"),
+ --peripheral.wrap("turbineValve_3"),
+ --peripheral.wrap("turbineValve_4"),
+ --peripheral.wrap("turbineValve_5"),
 }
 
--- Kontrola periferii
+-- Kontrola existencie periférií
 if not reaktor or not monitor then
   print("Reaktor alebo monitor nie je pripojeny!")
   return
 end
 
--- Inicializacia monitora
+-- Inicializuje monitor pre výstup údajov
 monitor.setTextScale(1.5)
 monitor.setBackgroundColor(colors.black)
 
--- Pomocna funkcia na centrovanie textu
+-- Vykreslí text na stred daného riadku
 local function stredText(y, text, farba)
   local w, _ = monitor.getSize()
   local x = math.floor((w - #text) / 2) + 1
@@ -52,7 +62,7 @@ local function stredText(y, text, farba)
   monitor.write(text)
 end
 
--- Zobrazenie stavu turbín (zjednotené)
+-- Zobrazí súhrnný stav turbín (koľko je aktívnych)
 local function vykresliTurbinyZjednotene()
   local aktivne = 0
   for _, turbina in ipairs(turbiny) do
@@ -65,7 +75,7 @@ local function vykresliTurbinyZjednotene()
   monitor.write("Turbiny: " .. aktivne .. "/" .. #turbiny)
 end
 
--- Vykreslenie tlacidiel
+-- Vykreslí tlačidlo na monitore
 local function vykresliTlacidlo(x, y, text, aktivne)
   monitor.setCursorPos(x, y)
   monitor.setBackgroundColor(aktivne and colors.green or colors.gray)
@@ -76,14 +86,14 @@ local function vykresliTlacidlo(x, y, text, aktivne)
   monitor.setBackgroundColor(colors.black)
 end
 
--- Odoslanie spravy do chatu
+-- Odošle správu do chatu pomocou chatBoxu
 local function posliChatSpravu(sprava)
   if chatBox then
     chatBox.sendMessage("[" .. nazovReaktora .. "]: " .. sprava, "@a")
   end
 end
 
--- Ziskanie aktualnych dat z reaktora
+-- Načíta aktuálne údaje z reaktora
 local function ziskajDataReaktora()
   local ok, data = pcall(function()
     return {
@@ -114,13 +124,13 @@ local function ziskajDataReaktora()
   return data
 end
 
--- Zobrazenie percent s popisom
+-- Zobrazí text s percentami na danom riadku
 local function vykresliPercenta(y, popis, hodnota, farba)
   local percent = math.floor(hodnota * 100)
   stredText(y, string.format("%s: %d%%", popis, percent), farba)
 end
 
--- Vykreslenie kompletneho stavu na monitor
+-- Zobrazí kompletné informácie o stave reaktora
 local function vykresliMonitor(data)
   monitor.clear()
   stredText(1, "REAKTOR: " .. nazovReaktora, colors.green)
@@ -141,7 +151,7 @@ local function vykresliMonitor(data)
   stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
 end
 
--- Bezpecnostne vypnutie (SCRAM)
+-- Bezpecnostná funkcia SCRAM: núdzovo vypne reaktor
 local function scram()
   scramManualne = true
   if reaktor.getStatus() then
@@ -153,7 +163,7 @@ local function scram()
   end
 end
 
--- Kontrola stavu a automaticke kroky
+-- Kontrola stavu a bezpečnostné kroky vrátane automatického zapnutia
 local function skontrolujBezpecnost(data)
   local vsetkyTurbinyAktivne = true
   for _, t in ipairs(turbiny) do
@@ -180,7 +190,7 @@ local function skontrolujBezpecnost(data)
   end
 end
 
--- Smycka zobrazovania stavu na monitore
+-- Hlavná smyčka zobrazenia údajov na monitore
 local function monitorSmycka()
   while true do
     local data = ziskajDataReaktora()
@@ -190,7 +200,7 @@ local function monitorSmycka()
   end
 end
 
--- Smycka spracovania prikazov z chatu
+-- Smyčka spracovania príkazov z chatu
 local function prikazSmycka()
   if not chatBox then return end
   while true do
@@ -235,5 +245,5 @@ local function prikazSmycka()
   end
 end
 
--- Spustenie paralelnych smyciek (monitor + prikazy)
+-- Spustí monitorovaciu a príkazovú smyčku súčasne
 parallel.waitForAny(monitorSmycka, prikazSmycka)
