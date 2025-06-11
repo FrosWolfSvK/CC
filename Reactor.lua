@@ -156,32 +156,34 @@ local function prikazSmycka()
   while true do
     local e, username, message = os.pullEvent("chat")
     local msg = string.lower(message)
-    
+
+    -- Parsovanie pre prikazy typu "reaktorX prikaz"
+    local cmd_reaktor, cmd_action = msg:match("^(reaktor%d+) (%a+)$")
+    if cmd_reaktor and cmd_action then
+      if cmd_reaktor == nazovReaktora then
+        if cmd_action == "on" then
+          if not scramManualne then
+            reaktor.setStatus(true)
+            posliChatSpravu("Reaktor zapnuty")
+          else
+            posliChatSpravu("Nie je mozne zapnut, SCRAM aktivny")
+          end
+        elseif cmd_action == "off" then
+          reaktor.setStatus(false)
+          posliChatSpravu("Reaktor vypnuty")
+        elseif cmd_action == "auto" then
+          autoZapnutie = not autoZapnutie
+          posliChatSpravu("Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"))
+        end
+      end
+
     -- Univerzalne prikazy bez prefixu
-    if msg == "status" then
+    elseif msg == "status" then
       local data = ziskajDataReaktora()
       posliChatSpravu("Reaktor je " .. (data.status and "zapnuty" or "vypnuty"))
     elseif msg == "info" then
       local data = ziskajDataReaktora()
       posliChatSpravu(string.format("Teplota: %.1fC, Poskodenie: %.1f%%", data.teplota - 273.15, data.poskodenie * 100))
-
-    -- Prikazy pre konkretny reaktor
-    elseif msg == nazovReaktora .. " on" then
-      if not scramManualne then
-        reaktor.setStatus(true)
-        posliChatSpravu("Reaktor zapnuty")
-      else
-        posliChatSpravu("Nie je mozne zapnut, SCRAM aktivny")
-      end
-    elseif msg == nazovReaktora .. " off" then
-      reaktor.setStatus(false)
-      posliChatSpravu("Reaktor vypnuty")
-    elseif msg == nazovReaktora .. " auto on" then
-      autoZapnutie = true
-      posliChatSpravu("Auto-zapnutie aktivovane")
-    elseif msg == nazovReaktora .. " auto off" then
-      autoZapnutie = false
-      posliChatSpravu("Auto-zapnutie deaktivovane")
     end
   end
 end
