@@ -22,11 +22,11 @@ local chatBox = peripheral.find("chatBox")
 
 -- Ziskaj turbiny (max 6)
 local turbiny = {}
-for i = 1, 6 do
-  local t = peripheral.find("turbineLogicAdapter", function(name, obj)
-    return not turbiny[name] -- zabezpeci unikatnost
-  end)
-  if t then turbiny[#turbiny+1] = t end
+for _, name in ipairs(peripheral.getNames()) do
+  if peripheral.getType(name) == "turbineLogicAdapter" then
+    table.insert(turbiny, peripheral.wrap(name))
+    if #turbiny >= 6 then break end
+  end
 end
 
 -- Kontrola periferii
