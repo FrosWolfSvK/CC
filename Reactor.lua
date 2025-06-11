@@ -135,7 +135,7 @@ local function vykresliMonitor(data)
   vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
   stredText(20, "Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"), autoZapnutie and colors.lime or colors.red)
   stredText(21, "Turbiny musia byt vsetky aktivne", colors.lightBlue)
-  stredText(22, "Prikazy: status, on, off, scram, auto on/off, info", colors.orange)
+  stredText(22, "Prikazy: status, <nazov> on/off, auto on/off, info", colors.orange)
   stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
 end
 
@@ -191,32 +191,33 @@ local function prikazSmycka()
       local d = ziskajDataReaktora()
       local aktivne = 0
       for _, t in ipairs(turbiny) do if t.isActive() then aktivne = aktivne + 1 end end
-      local turbinyStatus = aktivne == #turbiny and "VSETKY AKTIVNE" or (aktivne > 0 and "CASTECNE" or "ZIAIDNA AKTIVNA")
+      local turbinyStatus = aktivne == #turbiny and "VSETKY AKTIVNE" or (aktivne > 0 and "CASTECNE" or "ZIADNA AKTIVNA")
       chatBox.sendMessage(string.format("[%s] Teplota: %.2f C | Chladivo: %.1f%% | Odpad: %.1f%% | Palivo: %.1f%% | Spotreba: %.2f | Turbiny: %s",
         nazovReaktora, d.teplota - 273.15, d.chladivo * 100, d.odpad * 100, d.palivo * 100, d.rychlost, turbinyStatus), meno)
-    elseif prikaz == "on" then
-      scramManualne = false
-      reaktor.activate()
-      if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
-      posliChatSpravu("Reaktor zapnuty rucne.")
-    elseif prikaz == "off" then
-      scramManualne = true
-      reaktor.scram()
-      if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
-      posliChatSpravu("Reaktor vypnuty rucne.")
-    elseif prikaz == "scram" then
-      scramManualne = true
-      reaktor.scram()
-      if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
-      posliChatSpravu("SCRAM vykonany.")
-    elseif prikaz == "auto on" then
-      autoZapnutie = true
-      posliChatSpravu("Automaticke zapnutie je povolene.")
-    elseif prikaz == "auto off" then
-      autoZapnutie = false
-      posliChatSpravu("Automaticke zapnutie je zakazane.")
-    elseif prikaz == "info" then
-      posliChatSpravu("Prikazy: status, on, off, scram, auto on, auto off, info")
+    else
+      local prefix = nazovReaktora .. " "
+      if prikaz:sub(1, #prefix) == prefix then
+        local cmd = prikaz:sub(#prefix + 1)
+        if cmd == "on" then
+          scramManualne = false
+          reaktor.activate()
+          if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
+          posliChatSpravu("Reaktor zapnuty rucne.")
+        elseif cmd == "off" or cmd == "scram" then
+          scramManualne = true
+          reaktor.scram()
+          if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+          posliChatSpravu("Reaktor vypnuty rucne.")
+        elseif cmd == "auto on" then
+          autoZapnutie = true
+          posliChatSpravu("Automaticke zapnutie je povolene.")
+        elseif cmd == "auto off" then
+          autoZapnutie = false
+          posliChatSpravu("Automaticke zapnutie je zakazane.")
+        elseif cmd == "info" then
+          posliChatSpravu("Prikazy: status, " .. nazovReaktora .. " on/off, auto on/off, info")
+        end
+      end
     end
   end
 end
