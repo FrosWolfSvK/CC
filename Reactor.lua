@@ -28,7 +28,7 @@ local chatBox = najdiPeriferiu("chatBox")
 -- Vyhladanie az 6 turbín
 local turbiny = {}
 for _, name in ipairs(peripheral.getNames()) do
-  if peripheral.getType(name) == "turbineLogicAdapter" then
+  if peripheral.getType(name) == "turbineValve" then
     local ok, obj = pcall(function() return peripheral.wrap(name) end)
     if ok and obj then
       table.insert(turbiny, obj)
