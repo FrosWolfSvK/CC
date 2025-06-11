@@ -1,60 +1,34 @@
---[[
-  Multi Reactor Control Script
-  Autor: [Tvoje meno]
-  Popis: Tento skript zabezpecuje automatizovane riadenie fission reaktora,
-  kontrolu turbín, monitorovanie a ovládanie cez chat, SCRAM ochranu a vizualizáciu na monitore.
---]]
-
--- Konfiguracia
-local nazovReaktora = "reaktor1"
-local autoZapnutie = true
+-- Nastavenie konfiguracie
+local reaktorMeno = "reaktor1" -- Unikatne meno tohto reaktora
+local kritickeHoruceChladivo = 0.95
+local kritickeChladivo = 0.1
+local kritickyOdpad = 0.95
+local refreshInterval = 2
 local povolitRedstone = true
-local redstoneStrana = "back"
+local redstoneStrana = "back" -- Napr. "back", "right", "left"
 
--- Prahy bezpecnosti (aktualizovane podla poziadavky)
-local kritickaHodnotaZahriatehoChladiva = 0.5
-local kritickaHodnotaChladiva = 0.2
-local kritickaHodnotaOdpadu = 0.95
-local intervalObnovy = 2
-local oneskorenieSCRAM = 10 -- cas v sekundach, po ktorom sa moze SCRAM aktivovat
+-- Inicializacia premennych
+local alarmAktivny = false
+local poslednaAkcia = "--"
+local casAkcie = 0
 
--- Stav SCRAM a automatika
-local scramManualne = false
-local spustenieSCRAMOneskorene = false
-local casZaciatku = os.clock()
+-- Ziskanie periferii
+local reaktor = peripheral.find("fissionReactorLogicAdapter")
+local monitor = peripheral.find("monitor")
+local chat = peripheral.find("chatBox")
 
--- Najde a vrati periferiu daného typu (alebo nil ak nie je pripojená)
-local function najdiPeriferiu(typ)
-  local ok, zariadenie = pcall(function()
-    return peripheral.find(typ)
-  end)
-  return ok and zariadenie or nil
-end
-
--- Inicializácia základných periférií
-local reaktor = najdiPeriferiu("fissionReactorLogicAdapter")
-local monitor = najdiPeriferiu("monitor")
-local chatBox = najdiPeriferiu("chatBox")
-
--- Zoznam manuálne definovaných turbín (max 6)
-local turbiny = {
-  peripheral.wrap("turbineValve_1"),
-  peripheral.wrap("turbineValve_2"),
-  peripheral.wrap("turbineValve_3")
-}
-
--- Kontrola existencie periférií
+-- Kontrola periferii
 if not reaktor or not monitor then
-  print("Reaktor alebo monitor nie je pripojeny!")
+  print("Reaktor alebo monitor nenajdeny!")
   return
 end
 
--- Inicializuje monitor pre výstup údajov
+-- Priprava monitora
 monitor.setTextScale(1.5)
 monitor.setBackgroundColor(colors.black)
 
--- Vykreslí text na stred daného riadku
-local function stredText(y, text, farba)
+-- Zobrazí text vycentrovaný na daný riadok monitora
+local function strednyText(y, text, farba)
   local w, _ = monitor.getSize()
   local x = math.floor((w - #text) / 2) + 1
   monitor.setCursorPos(x, y)
@@ -62,128 +36,151 @@ local function stredText(y, text, farba)
   monitor.write(text)
 end
 
--- Zobrazí súhrnný stav turbín (koľko je aktívnych)
-local function vykresliTurbinyZjednotene()
-  local aktivne = 0
-  for _, turbina in ipairs(turbiny) do
-    local ok, aktivna = pcall(function() return turbina.isActive() end)
-    if ok and aktivna then aktivne = aktivne + 1 end
-  end
-  local farba = aktivne == #turbiny and colors.lime or (aktivne > 0 and colors.yellow or colors.red)
-  monitor.setCursorPos(1, 11)
-  monitor.setTextColor(farba)
-  monitor.write("Turbiny: " .. aktivne .. "/" .. #turbiny)
-end
-
--- Vykreslí tlačidlo na monitore
-local function vykresliTlacidlo(x, y, text, aktivne)
+-- Vykreslí farebné tlačidlo s textom
+local function tlacidlo(x, y, text, aktivne)
   monitor.setCursorPos(x, y)
-  monitor.setBackgroundColor(aktivne and colors.green or colors.gray)
+  monitor.setBackgroundColor(aktivne and colors.green or colors.red)
   monitor.setTextColor(colors.black)
-  monitor.write(string.rep(" ", 12))
-  monitor.setCursorPos(x + 1, y)
+  monitor.write(string.rep(" ", 14))
+  monitor.setCursorPos(x + 2, y)
   monitor.write(text)
   monitor.setBackgroundColor(colors.black)
 end
 
--- Odošle správu do chatu pomocou chatBoxu
-local function posliChatSpravu(sprava)
-  if chatBox then
-    chatBox.sendMessage("[" .. nazovReaktora .. "]: " .. sprava, "@a")
+-- Aktivuje výstražný alarm a odošle správu do chatu
+local function prehratAlarm()
+  alarmAktivny = true
+  if chat then chat.sendMessage("["..reaktorMeno.."]: ALARM aktivovany!", "@a") end
+end
+
+-- Zastaví alarm
+local function zastavitAlarm()
+  alarmAktivny = false
+end
+
+-- Vykoná SCRAM, ak je reaktor zapnutý, a aktivuje redstone signál
+local function zastavReaktor()
+  if reaktor.getStatus() then
+    reaktor.scram()
+    if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
   end
 end
 
--- Načíta aktuálne údaje z reaktora
-local function ziskajDataReaktora()
-  local ok, data = pcall(function()
-    return {
-      status = reaktor.getStatus(),
-      teplota = reaktor.getTemperature(),
-      poskodenie = reaktor.getDamagePercent(),
-      chladivo = reaktor.getCoolantFilledPercentage(),
-      zahriate = reaktor.getHeatedCoolantFilledPercentage(),
-      odpad = reaktor.getWasteFilledPercentage(),
-      palivo = reaktor.getFuelFilledPercentage(),
-      rychlost = reaktor.getActualBurnRate(),
-      maxRychlost = reaktor.getMaxBurnRate()
-    }
-  end)
-  if not ok then
-    return {
-      status = false,
-      teplota = 0,
-      poskodenie = 0,
-      chladivo = 0,
-      zahriate = 0,
-      odpad = 0,
-      palivo = 0,
-      rychlost = 0,
-      maxRychlost = 0
-    }
+-- Zapne reaktor, ak je vypnutý, a vypne redstone signál
+local function zapniReaktor()
+  if not reaktor.getStatus() then
+    reaktor.activate()
+    if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
   end
-  return data
 end
 
--- Zobrazí text s percentami na danom riadku
-local function vykresliPercenta(y, popis, hodnota, farba)
-  local percent = math.floor(hodnota * 100)
-  stredText(y, string.format("%s: %d%%", popis, percent), farba)
+-- Získa a vráti štruktúrované dáta z reaktora
+local function ziskajData()
+  return {
+    stav = reaktor.getStatus(),
+    teplota = reaktor.getTemperature(),
+    poskodenie = reaktor.getDamagePercent(),
+    chladivo = reaktor.getCoolantFilledPercentage(),
+    horuce = reaktor.getHeatedCoolantFilledPercentage(),
+    odpad = reaktor.getWasteFilledPercentage(),
+    palivo = reaktor.getFuelFilledPercentage(),
+    spotreba = reaktor.getActualBurnRate(),
+    maxSpotreba = reaktor.getMaxBurnRate()
+  }
 end
 
--- Zobrazí kompletné informácie o stave reaktora
-local function vykresliMonitor(data)
+-- Vyhodnotí bezpečnostné stavy a podľa potreby SCRAM/ne/alarm
+local function kontrolujBezpecnost(data)
+  if data.horuce >= kritickeHoruceChladivo then
+    zastavReaktor()
+    prehratAlarm()
+    if chat then chat.sendMessage("["..reaktorMeno.."]: Prilis horuce chladivo!", "@a") end
+  elseif data.chladivo <= kritickeChladivo then
+    zastavReaktor()
+    prehratAlarm()
+    if chat then chat.sendMessage("["..reaktorMeno.."]: Nedostatok chladiva!", "@a") end
+  elseif data.odpad >= kritickyOdpad then
+    zastavReaktor()
+    prehratAlarm()
+    if chat then chat.sendMessage("["..reaktorMeno.."]: Prilis vela odpadu!", "@a") end
+  else
+    zastavitAlarm()
+    zapniReaktor()
+  end
+end
+
+-- Vykreslí informácie o stave reaktora na monitor
+local function zobraz(data)
   monitor.clear()
-  stredText(1, "REAKTOR: " .. nazovReaktora, colors.green)
-  stredText(3, "Status: " .. (data.status and "Online" or "Offline"), data.status and colors.lime or colors.red)
-  stredText(4, string.format("Teplota: %.2f C", data.teplota - 273.15), colors.orange)
-  stredText(5, string.format("Poskodenie: %.1f%%", data.poskodenie * 100), colors.red)
-  vykresliPercenta(6, "Chladivo", data.chladivo, colors.cyan)
-  vykresliPercenta(7, "Zahriate chladivo", data.zahriate, colors.magenta)
-  vykresliPercenta(8, "Odpad", data.odpad, colors.yellow)
-  vykresliPercenta(9, "Palivo", data.palivo, colors.white)
-  stredText(11, string.format("Spotreba: %.2f / %.2f", data.rychlost, data.maxRychlost), colors.lightGray)
-  vykresliTurbinyZjednotene()
-  vykresliTlacidlo(4, 18, "ZAPNUT", data.status)
-  vykresliTlacidlo(18, 18, "NEAKTIVNY", not data.status)
-  stredText(20, "Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"), autoZapnutie and colors.lime or colors.red)
-  stredText(21, "Turbiny musia byt vsetky aktivne", colors.lightBlue)
-  stredText(22, "Prikazy: status, info, " .. nazovReaktora .. " on/off/auto", colors.orange)
-  stredText(23, "Cas: " .. textutils.formatTime(os.time(), true), colors.gray)
+  strednyText(1, "REKTOR - " .. string.upper(reaktorMeno), colors.green)
+
+  strednyText(3, "Stav: " .. (data.stav and "Zapnuty" or "Vypnuty"), data.stav and colors.lime or colors.red)
+  strednyText(4, string.format("Teplota: %.2f C", data.teplota - 273.15), colors.orange)
+  strednyText(5, string.format("Poskodenie: %.1f%%", data.poskodenie * 100), colors.red)
+  strednyText(6, string.format("Chladivo: %.1f%%", data.chladivo * 100), colors.cyan)
+  strednyText(7, string.format("Horuce chladivo: %.1f%%", data.horuce * 100), colors.magenta)
+  strednyText(8, string.format("Odpad: %.1f%%", data.odpad * 100), colors.yellow)
+  strednyText(9, string.format("Palivo: %.1f%%", data.palivo * 100), colors.white)
+  strednyText(10, string.format("Spotreba: %.2f / %.2f", data.spotreba, data.maxSpotreba), colors.lightGray)
+
+  tlacidlo(3, 12, "ZAPNUT", data.stav)
+  tlacidlo(21, 12, "SCRAM", not data.stav)
+
+  strednyText(15, "Posledna akcia: "..poslednaAkcia, colors.lightBlue)
+  strednyText(17, "Prikazy: "..reaktorMeno.." on/off/status/burn set <x>", colors.gray)
 end
 
--- Spracovanie príkazov cez chat
-local function prikazSmycka()
+-- Monitorovacia slučka – zobrazuje údaje a kontroluje stav
+local function smyckaMonitor()
   while true do
-    local e, username, message = os.pullEvent("chat")
-    local msg = string.lower(message)
+    local d = ziskajData()
+    zobraz(d)
+    kontrolujBezpecnost(d)
+    sleep(refreshInterval)
+  end
+end
 
-    -- Parsovanie pre prikazy typu "reaktorX prikaz"
-    local cmd_reaktor, cmd_action = msg:match("^(reaktor%d+) (%a+)$")
-    if cmd_reaktor and cmd_action then
-      if cmd_reaktor == nazovReaktora then
-        if cmd_action == "on" then
-          if not scramManualne then
-            reaktor.setStatus(true)
-            posliChatSpravu("Reaktor zapnuty")
-          else
-            posliChatSpravu("Nie je mozne zapnut, SCRAM aktivny")
+-- Spracováva príkazy cez chatBox pre tento reaktor
+local function prikazovaSmycka()
+  if not chat then return function() while true do sleep(10) end end end
+
+  return function()
+    while true do
+      local _, meno, sprava = os.pullEvent("chat")
+      local prikaz = sprava:lower()
+      local target, argument = prikaz:match("^(%S+)%s+(.*)$")
+
+      if target == reaktorMeno then
+        local cmd, param = argument:match("^(%S+)%s*(.*)$")
+
+        if cmd == "on" then
+          zapniReaktor()
+          chat.sendMessage("["..reaktorMeno.."]: Zapnuty uzivatelom " .. meno, "@a")
+          poslednaAkcia = "MANUALNE ZAPNUTY"
+          casAkcie = os.clock()
+        elseif cmd == "off" then
+          zastavReaktor()
+          chat.sendMessage("["..reaktorMeno.."]: SCRAM uzivatelom " .. meno, "@a")
+          poslednaAkcia = "MANUALNE VYPNUTY"
+          casAkcie = os.clock()
+        elseif cmd == "status" then
+          local d = ziskajData()
+          chat.sendMessage(string.format("[%s]: Teplota: %.2f C | Chladivo: %.1f%% | Odpad: %.1f%% | Palivo: %.1f%% | Spotreba: %.2f", reaktorMeno, d.teplota - 273.15, d.chladivo * 100, d.odpad * 100, d.palivo * 100, d.spotreba), meno)
+        elseif cmd == "burn" and param:match("^set%s+%d+%.?%d*$") then
+          local val = tonumber(param:match("set%s+(%d+%.?%d*)"))
+          if val then
+            val = math.min(val, reaktor.getMaxBurnRate())
+            reaktor.setBurnRate(val)
+            chat.sendMessage("["..reaktorMeno.."]: Spotreba nastavena na " .. val .. " uzivatelom " .. meno, "@a")
           end
-        elseif cmd_action == "off" then
-          reaktor.setStatus(false)
-          posliChatSpravu("Reaktor vypnuty")
-        elseif cmd_action == "auto" then
-          autoZapnutie = not autoZapnutie
-          posliChatSpravu("Auto-zapnutie: " .. (autoZapnutie and "ZAPNUTE" or "VYPNUTE"))
         end
       end
-
-    -- Univerzalne prikazy bez prefixu
-    elseif msg == "status" then
-      local data = ziskajDataReaktora()
-      posliChatSpravu("Reaktor je " .. (data.status and "zapnuty" or "vypnuty"))
-    elseif msg == "info" then
-      local data = ziskajDataReaktora()
-      posliChatSpravu(string.format("Teplota: %.1fC, Poskodenie: %.1f%%", data.teplota - 273.15, data.poskodenie * 100))
     end
   end
 end
+
+-- Automaticke zapnutie po starte, ak nie je chyba
+zapniReaktor()
+
+-- Spustenie
+parallel.waitForAny(smyckaMonitor, prikazovaSmycka())
