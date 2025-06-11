@@ -25,19 +25,13 @@ local reaktor = najdiPeriferiu("fissionReactorLogicAdapter")
 local monitor = najdiPeriferiu("monitor")
 local chatBox = najdiPeriferiu("chatBox")
 
--- Vyhladanie az 6 turbín s robustnym osetrenim
-local turbiny = {}
-local zaznamenane = {}
-for _, name in ipairs(peripheral.getNames()) do
-  if peripheral.getType(name) == "turbineValve" and not zaznamenane[name] then
-    local ok, obj = pcall(function() return peripheral.wrap(name) end)
-    if ok and obj and type(obj.isActive) == "function" then
-      table.insert(turbiny, obj)
-      zaznamenane[name] = true
-    end
-    if #turbiny >= 6 then break end
-  end
-end
+-- Manualne zadane turbiny
+local turbiny = {
+  peripheral.wrap("turbineValve_1"),
+  peripheral.wrap("turbineValve_2"),
+  peripheral.wrap("turbineValve_3")
+  -- pridaj dalsie ak mas, max 6
+}
 
 -- Kontrola periferii
 if not reaktor or not monitor then
@@ -150,7 +144,7 @@ end
 -- Bezpecnostne vypnutie (SCRAM)
 local function scram()
   scramManualne = true
-  if reaktor.getStatus() then -- overenie ci je reaktor aktivny pred SCRAM
+  if reaktor.getStatus() then
     reaktor.scram()
     if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
     posliChatSpravu("Reaktor SCRAM aktivovany.")
