@@ -25,13 +25,15 @@ local reaktor = najdiPeriferiu("fissionReactorLogicAdapter")
 local monitor = najdiPeriferiu("monitor")
 local chatBox = najdiPeriferiu("chatBox")
 
--- Vyhladanie az 6 turbín
+-- Vyhladanie az 6 turbín s robustnym osetrenim
 local turbiny = {}
+local zaznamenane = {}
 for _, name in ipairs(peripheral.getNames()) do
-  if peripheral.getType(name) == "turbineValve" then
+  if peripheral.getType(name) == "turbineValve" and not zaznamenane[name] then
     local ok, obj = pcall(function() return peripheral.wrap(name) end)
-    if ok and obj then
+    if ok and obj and type(obj.isActive) == "function" then
       table.insert(turbiny, obj)
+      zaznamenane[name] = true
     end
     if #turbiny >= 6 then break end
   end
@@ -148,8 +150,13 @@ end
 -- Bezpecnostne vypnutie (SCRAM)
 local function scram()
   scramManualne = true
-  reaktor.scram()
-  if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+  if reaktor.getStatus() then -- overenie ci je reaktor aktivny pred SCRAM
+    reaktor.scram()
+    if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+    posliChatSpravu("Reaktor SCRAM aktivovany.")
+  else
+    posliChatSpravu("SCRAM nebol spusteny: Reaktor uz je vypnuty.")
+  end
 end
 
 -- Kontrola stavu a automaticke kroky
@@ -220,9 +227,7 @@ local function prikazSmycka()
           end
           posliChatSpravu("Reaktor zapnuty rucne.")
         elseif cmd == "off" or cmd == "scram" then
-          scramManualne = true
-          reaktor.scram()
-          if povolitRedstone then redstone.setOutput(redstoneStrana, true) end
+          scram()
           posliChatSpravu("Reaktor vypnuty rucne.")
         elseif cmd == "auto on" then
           autoZapnutie = true
