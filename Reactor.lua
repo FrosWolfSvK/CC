@@ -148,9 +148,10 @@ local function skontrolujBezpecnost(data)
     posliChatSpravu("Bezpecnostny SCRAM! Kontroluj system.")
   else
     zastavitAlarm()
-    if autoZapnutie and not scramManualne then
+    if autoZapnutie and not scramManualne and not data.status then
       reaktor.activate()
       if povolitRedstone then redstone.setOutput(redstoneStrana, false) end
+      posliChatSpravu("Reaktor bol automaticky zapnuty.")
     end
   end
 end
