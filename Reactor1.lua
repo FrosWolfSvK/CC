@@ -1,6 +1,6 @@
 -- Nastavenie konfiguracie
-local reaktorMeno = "reaktor1"
-local kritickeHoruceChladivo = 0.95
+local reaktorMeno = "vodik"
+local kritickeHoruceChladivo = 0.3
 local kritickeChladivo = 0.3
 local kritickyOdpad = 0.95
 local refreshInterval = 2
@@ -115,9 +115,7 @@ local function vykresliStavTurbiny()
     local aktivna = naplnenie < 0.98
     local stav = aktivna and "ON " or "OFF"
     local farba = aktivna and colors.lime or colors.red
-    monitor.setCursorPos(2, 14)
-    monitor.setTextColor(farba)
-    monitor.write("Turbina: "..stav)
+    strednyText(13, "Turbina: " .. stav, farba)
   end
 end
 
@@ -160,6 +158,7 @@ local function zobraz(data)
   strednyText(9, string.format("Palivo: %.1f%%", data.palivo * 100), colors.white)
   strednyText(10, string.format("Spotreba: %.2f / %.2f", data.spotreba, data.maxSpotreba), colors.lightGray)
 
+  strednyText(11, string.rep("-", 20), colors.gray)
   vykresliTlacidla(data)
   vykresliStavTurbiny()
 
