@@ -17,11 +17,12 @@ local reaktor = peripheral.find("fissionReactorLogicAdapter")
 local monitor = peripheral.find("monitor")
 local chat = peripheral.find("chatBox")
 
--- Zistenie turbín
-local turbiny = {}
+-- Zistenie jednej turbíny
+local turbina = nil
 for _, name in ipairs(peripheral.getNames()) do
   if peripheral.getType(name) == "turbineValve" then
-    table.insert(turbiny, peripheral.wrap(name))
+    turbina = peripheral.wrap(name)
+    break
   end
 end
 
@@ -100,31 +101,31 @@ local function ziskajData()
   }
 end
 
-local function vsetkyTurbinyAktivne()
-  for _, turbina in ipairs(turbiny) do
-    if not turbina.getActive() then
-      return false
-    end
+local function turbinaAktivna()
+  if turbina then
+    local naplnenie = turbina.getEnergyFilledPercentage()
+    return naplnenie < 0.98
   end
   return true
 end
 
 local function vykresliStavTurbiny()
-  for i, turbina in ipairs(turbiny) do
-    local aktivna = turbina.getActive()
+  if turbina then
+    local naplnenie = turbina.getEnergyFilledPercentage()
+    local aktivna = naplnenie < 0.98
     local stav = aktivna and "ON " or "OFF"
     local farba = aktivna and colors.lime or colors.red
-    monitor.setCursorPos(2 + ((i - 1) % 3) * 14, 14 + math.floor((i - 1) / 3))
+    monitor.setCursorPos(2, 14)
     monitor.setTextColor(farba)
-    monitor.write("Turbina "..i..": "..stav)
+    monitor.write("Turbina: "..stav)
   end
 end
 
 local function kontrolujBezpecnost(data)
-  if not vsetkyTurbinyAktivne() then
+  if not turbinaAktivna() then
     zastavReaktor()
     prehratAlarm()
-    if chat then chat.sendMessage("["..reaktorMeno.."]: Niektore turbiny su neaktivne!", "@a") end
+    if chat then chat.sendMessage("["..reaktorMeno.."]: Turbina je neaktivna!", "@a") end
     return
   end
 
@@ -225,4 +226,4 @@ local function prikazovaSmycka()
 end
 
 zapniReaktor()
-parallel.waitForAny(smyckaMonitor, prikazovaSmycka(), redstoneSmycka)
+parallel.waitForAny(smyckaMonitor, prikazovaSmycka, redstoneSmycka)
