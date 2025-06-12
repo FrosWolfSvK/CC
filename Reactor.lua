@@ -47,6 +47,18 @@ local function tlacidlo(x, y, text, aktivne)
   monitor.setBackgroundColor(colors.black)
 end
 
+-- Vykreslí dve tlačidlá vycentrované na monitore
+local function vykresliTlacidla(data)
+  local w, _ = monitor.getSize()
+  local sirkaTlacidla = 14
+  local medzera = 2
+  local totalWidth = sirkaTlacidla * 2 + medzera
+  local startX = math.floor((w - totalWidth) / 2)
+
+  tlacidlo(startX, 12, "ZAPNUT", data.stav)
+  tlacidlo(startX + sirkaTlacidla + medzera, 12, "NEAKTIVNY", not data.stav)
+end
+
 -- Aktivuje výstražný alarm a odošle správu do chatu
 local function prehratAlarm()
   alarmAktivny = true
@@ -123,8 +135,7 @@ local function zobraz(data)
   strednyText(9, string.format("Palivo: %.1f%%", data.palivo * 100), colors.white)
   strednyText(10, string.format("Spotreba: %.2f / %.2f", data.spotreba, data.maxSpotreba), colors.lightGray)
 
-  tlacidlo(3, 12, "ZAPNUT", data.stav)
-  tlacidlo(21, 12, "SCRAM", not data.stav)
+  vykresliTlacidla(data)
 
   strednyText(15, "Posledna akcia: "..poslednaAkcia, colors.lightBlue)
   strednyText(17, "Prikazy: "..reaktorMeno.." on/off/status/burn set <x>", colors.gray)
@@ -137,6 +148,18 @@ local function smyckaMonitor()
     zobraz(d)
     kontrolujBezpecnost(d)
     sleep(refreshInterval)
+  end
+end
+
+-- Slučka pre udrzanie redstone signalizacie pocas alarmu
+local function redstoneSmycka()
+  while true do
+    if povolitRedstone and alarmAktivny then
+      redstone.setOutput(redstoneStrana, true)
+    elseif povolitRedstone then
+      redstone.setOutput(redstoneStrana, false)
+    end
+    sleep(0.5)
   end
 end
 
@@ -183,4 +206,4 @@ end
 zapniReaktor()
 
 -- Spustenie
-parallel.waitForAny(smyckaMonitor, prikazovaSmycka())
+parallel.waitForAny(smyckaMonitor, prikazovaSmycka(), redstoneSmycka)
